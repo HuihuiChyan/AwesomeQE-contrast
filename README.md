@@ -1,3 +1,3 @@
 # AwesomeQE-contrast
 
-这套代码实际上是基于对比学习的代码，但是我并没有把数据生成的部分放上来，所以你肯定跑不通，不要想了。
+This is the official repository for paper Improving Translation Quality Estimation with Bias Mitigation, accepted by ACL2023. However, I am busy with EMNLP and unable to prepare it organized. I will tidy up this repository later.
