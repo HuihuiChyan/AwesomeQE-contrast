@@ -149,7 +149,7 @@ def read_examples(args, data_prefix, data_type=None):
     if args.has_additional_feature:
         examples["additional_features"] = [[float(l) for l in line.strip().split()] for line in open(os.path.join(args.data_dir, data_prefix+'.'+args.feature_suffix), encoding="utf-8").readlines()]
     if args.do_contrast and data_prefix == "train":
-        lines_ref = [line.strip() for line in open(os.path.join(args.data_dir, data_prefix+'.ref'), encoding="utf-8").readlines()]
+        lines_ref = [line.strip() for line in open(os.path.join(args.data_dir, data_prefix+"."+args.contrast_ref_suffix), encoding="utf-8").readlines()]
         contrast_lines = [line.strip().split(' ||| ') for line in open(os.path.join(args.data_dir, data_prefix+'.'+args.contrast_suffix), encoding="utf-8").readlines()]
         new_contrast_lines = []
         for line in zip(lines_ref, contrast_lines):

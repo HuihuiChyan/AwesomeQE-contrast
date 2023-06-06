@@ -14,7 +14,6 @@ from transformers import (
 )
 from transformers.models.bart.modeling_bart import shift_tokens_right
 from transformers.models.marian.modeling_marian import MarianPreTrainedModel
-import pdb
 
 class QEBaseClass(object):
 	# 所有的子类均应该继承这个类，而且是通过多继承的方式，并且将这个类放置在第一个继承的位置，从而获得forward方法
@@ -203,5 +202,8 @@ class MarianPreTrainedModelForQE(QEBaseClass, MarianPreTrainedModel):
 		else:
 			self.word_classifier = nn.Linear(config.hidden_size, 2)
 			self.sent_classifier = nn.Linear(config.hidden_size, 1)
+
+		if args.do_contrast:
+			self.second_sent_classifier = nn.Linear(config.hidden_size, 1)
 
 		self.init_weights()

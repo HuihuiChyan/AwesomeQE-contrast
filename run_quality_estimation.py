@@ -28,7 +28,6 @@ from modeling_QE import (
 )
 from QE_utils import read_and_process_examples, DataCollatorForQE
 
-import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -220,13 +219,15 @@ def train(args, model, tokenizer, train_dataloader, valid_dataloader, accelerato
 			model.train()
 
 			if args.do_contrast:
-				if args.model_type == "xlmr":
-					batch["token_type_ids"] = None
-
-				first_sent_outputs, second_sent_outputs = model(batch["input_ids"],
-																attention_mask=batch["attention_mask"],
-																token_type_ids=batch["token_type_ids"],
-																do_contrast=True)
+				if args.model_type == "bert":
+					first_sent_outputs, second_sent_outputs = model(batch["input_ids"],
+																	attention_mask=batch["attention_mask"],
+																	token_type_ids=batch["token_type_ids"],
+																	do_contrast=True)
+				else:
+					first_sent_outputs, second_sent_outputs = model(batch["input_ids"],
+																	attention_mask=batch["attention_mask"],
+																	do_contrast=True)					
 
 				all_contrast_sent_outputs = []
 				for i in range(len(batch["contrast_input_ids"][0])):
@@ -240,7 +241,7 @@ def train(args, model, tokenizer, train_dataloader, valid_dataloader, accelerato
 														 attention_mask=batch["contrast_attention_mask"][:,i,:],
 														 do_contrast=True)
 					all_contrast_sent_outputs.append(contrast_sent_outputs)
-				# all_contrast_sent_outputs.append(second_sent_outputs)
+				all_contrast_sent_outputs.append(second_sent_outputs)
 
 				if not args.only_contrast:
 					sent_loss = sent_loss_fct(first_sent_outputs, batch["sentlab_lines"])
@@ -415,6 +416,7 @@ if __name__ == '__main__':
 	parser.add_argument("--only_contrast", action="store_true")
 	parser.add_argument("--contrast_time", type=int, default=20)
 	parser.add_argument("--contrast_suffix", type=str, default="contrast")
+	parser.add_argument("--contrast_ref_suffix", type=str, default="pe")
 	parser.add_argument("--contrast_temp", type=float, default=0.3)
 	parser.add_argument("--contrast_lower_is_better", action="store_true")
 
@@ -448,7 +450,7 @@ if __name__ == '__main__':
 	PreTrainedModelForQE = ModelDict[args.model_type]
 
 	if args.do_contrast:
-		assert args.model_type in ["bert", "xlmr"], "Currently contrastive learning only support BERT and XLMR."
+		assert args.model_type in ["bert", "xlmr", "opus-mt"], "Currently contrastive learning only support BERT and XLMR."
 
 	if args.do_train:
 

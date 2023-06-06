@@ -1,19 +1,21 @@
 import math
 import torch
 from transformers import BatchEncoding
-import pdb
 
 
 class DataCollatorForNoiser:
 	def __init__(self, tokenizer, args):
 		self.tokenizer = tokenizer
 		self.mask_index = tokenizer.mask_token_id
-		if args.model_type in ["cBERT", "cBART"]:
-			import jieba_fast
+		if args.jieba_cut == "true":
+			import jieba_fast # 如果待处理序列是中文，那就需要先用jieba进行切分，才能进行Whole-Word-Mask
 			self.zh_tokenizer = jieba_fast.lcut
+			self.jieba_cut = True
+		else:
+			self.jieba_cut = False
 		self.mask_length = args.mask_length
-		self.LOWER_BOUND = args.vocab_lower_bound
-		self.UPPER_BOUND = tokenizer.vocab_size
+		self.LOWER_BOUND = 106 #14 for XLM, 106 for BERT
+		self.UPPER_BOUND = len(tokenizer.vocab)
 		self.model_type = args.model_type
 
 		self.mask_span_distribution = None
@@ -59,8 +61,8 @@ class DataCollatorForNoiser:
 			
 			return is_word_start
 
-		if args.model_type in ["cBERT", "cBART"]:
-			raw_tokens = self.tokenizer.convert_ids_to_tokens(source)
+		raw_tokens = self.tokenizer.convert_ids_to_tokens(source)
+		if self.jieba_cut:
 			words = [raw_tokens[0]] + self.zh_tokenizer(''.join(raw_tokens[1:-1]), HMM=True) + [raw_tokens[-1]]
 
 			def _is_chinese_char(c):
@@ -123,13 +125,14 @@ class DataCollatorForNoiser:
 			is_word_start[0] = 0
 			is_word_start[-1] = 0
 			word_starts = torch.tensor(word_starts).long().view(-1, 1) # unused
-			# 据我观察，这个word_starts记录的是所有中文的全词（不包括英文、数字或者标点），然后好像没啥用
+			# 据我观察，这个word_starts记录的是所有中文的全词（不包括英文、数字或者标点）
 		else:
-			raw_tokens = self.tokenizer.convert_ids_to_tokens(source)
-			is_word_start = torch.zeros(source.size()).long()
-			for i, tok in enumerate(raw_tokens):
-				if not (len(tok) > 2 and tok[:2] == "##"):
-					is_word_start[i] == 1
+			is_word_start = torch.ones(source.size()).long()
+			for i in range(len(raw_tokens)):
+				if len(raw_tokens[i])>2 and raw_tokens[:2] == "##":
+					is_word_start[i] = 1
+			is_word_start[0] = 0
+			is_word_start[-1] = 0
 		return is_word_start
 
 	def add_whole_word_mask(self, source, mask_ratio, random_ratio, replace_length, chinese_ref=None):
@@ -197,12 +200,18 @@ class DataCollatorForNoiser:
 			# keep index, but replace it with [MASK]
 			# 在num_to_mask个token中，取mask_random个用随机词做替换，其余的用<MASK>做替换
 			source[indices] = self.mask_index
-			# source[indices[mask_random]] = torch.randint(
-			# 	2072, 8843, size=(mask_random.sum(),)
-			# ) # mBERT中的汉字区间
-			source[indices[mask_random]] = torch.randint(
-				self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
-			)
+			if self.model_type == "mBERT":
+				# source[indices[mask_random]] = torch.randint(
+				# 	2072, 8843, size=(mask_random.sum(),)
+				# )
+				source[indices[mask_random]] = torch.randint(
+					self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
+				)
+
+			else:
+				source[indices[mask_random]] = torch.randint(
+					self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
+				)
 
 		if self.mask_span_distribution is not None:
 			assert len(lengths.size()) == 1
@@ -221,13 +230,17 @@ class DataCollatorForNoiser:
 				else:
 					# keep index, but replace it with [MASK]
 					source[indices] = self.mask_index
-					# source[indices[mask_random]] = torch.randint(
-					# 	2072, 8843, size=(mask_random.sum(),)
-					# ) # mBERT中的汉字区间
-					source[indices[mask_random]] = torch.randint(
-						self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
-					)
-
+					if self.model_type == "mBERT":
+						# source[indices[mask_random]] = torch.randint(
+						# 	2072, 8843, size=(mask_random.sum(),)
+						# )
+						source[indices[mask_random]] = torch.randint(
+							self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
+						)
+					else:
+						source[indices[mask_random]] = torch.randint(
+							self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
+						)
 		else:
 			# 这个函数的意义在于，对于所有的non_word_start进行对应的MASK
 			while indices.size(0) > 0:
@@ -241,12 +254,17 @@ class DataCollatorForNoiser:
 				else:
 					# keep index, but replace it with [MASK]
 					source[indices] = self.mask_index
-					# source[indices[mask_random]] = torch.randint(
-					# 	2072, 8843, size=(mask_random.sum(),)
-					# )
-					source[indices[mask_random]] = torch.randint(
-						self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
-					)
+					if self.model_type == "mBERT":
+						# source[indices[mask_random]] = torch.randint(
+						# 	2072, 8843, size=(mask_random.sum(),)
+						# )
+						source[indices[mask_random]] = torch.randint(
+							self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
+						)
+					else:
+						source[indices[mask_random]] = torch.randint(
+							self.LOWER_BOUND, self.UPPER_BOUND, size=(mask_random.sum(),)
+						)
 
 				assert source_length - 1 not in indices
 
@@ -280,12 +298,17 @@ class DataCollatorForNoiser:
 
 		num_random = int(math.ceil(n * random_ratio))
 		result[noise_indices[num_random:]] = self.mask_index
-		# result[noise_indices[:num_random]] = torch.randint(
-		# 	low=2072, high=8843, size=(num_random,)
-		# ) # mBERT中的汉字区间
-		result[noise_indices[:num_random]] = torch.randint(
-			low=self.LOWER_BOUND, high=self.UPPER_BOUND, size=(num_random,)
-		)
+		if self.model_type == "mBERT":
+			result[noise_indices[:num_random]] = torch.randint(
+				low=self.LOWER_BOUND, high=self.tokenizer.vocab_size, size=(num_random,)
+			)
+			# result[noise_indices[:num_random]] = torch.randint(
+			# 	low=2072, high=8843, size=(num_random,)
+			# )
+		else:
+			result[noise_indices[:num_random]] = torch.randint(
+				low=self.LOWER_BOUND, high=self.tokenizer.vocab_size, size=(num_random,)
+			)
 
 		result[~noise_mask] = tokens
 
@@ -340,8 +363,8 @@ class DataCollatorForNoiser:
 				else:
 					replace_length = 1
 
-				if args.model_type == "cBERT-HIT":
-					# 如果你使用的BERT是哈工大-讯飞版的，就需要用ltp分词器切分
+				if args.model_type == "cBERT":
+					# 我使用的BERT是哈工大讯飞版的WWM，因此需要用ltp分词器切分
 					target = self.add_whole_word_mask(target, 
 													  mask_ratio=mask_ratio,
 													  random_ratio=mask_random_ratio,
@@ -370,7 +393,7 @@ class DataCollatorForNoiser:
 			else:
 				input_ids = torch.cat([source, target])
 
-				if args.model_type in ["cBERT-HIT", "cBERT", "BERT"]:
+				if args.model_type in ["cBERT", "mBERT"]:
 					source_token_type_ids = source.fill_(0)
 					target_token_type_ids = target.fill_(1)
 					target_token_type_ids[0] = 0 # SEP符号理应算前半句话
